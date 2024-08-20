@@ -87,10 +87,6 @@ theorem δs_cons [Automaton] (q : K)
 
 def accepts [Automaton] (w: List A) : Prop := f (s ↠ w)
 
--- theorem informal_accepts_good [Automaton] (w : ListN n A) :
--- formally_accepts w ↔ accepts (w.val)
--- := sorry
-
 example :
   let str : List (Fin 2)  := [0, 1, 1, 0, 1]
   m1.accepts str
@@ -117,7 +113,7 @@ theorem δs_append [Automaton] :
     exact ih (q ↝ f)
 
 def is_an_bn (l : List α) (a : α) (b : α) :=
-  ∃ n : Nat, l = replicate n a ++ (b ^^ n)
+  ∃ n : Nat, l = a ^^ n++ (b ^^ n)
 
 private def ab_pair (l : List α) (a b : α) (n1 n2 : Nat) (_ : l = a ^^ n1 ++ b ^^ n2) : Nat × Nat := (n1, n2)
 
@@ -232,17 +228,19 @@ private theorem exclusive_an_bn_a (n1 n2 : Nat) :
   intro l a b
   intro h_n1_n2
   intro l_an_bn
-  intro a_ne_b
-  admit
-
-
-
+  intro h_a_ne_b
+  
+  let ⟨n, h⟩ := l_an_bn
+  rw [h_n1_n2] at h
+  have := ab_replication_is_injective n1 n n2 n a b h_a_ne_b h
+  simp at this
+  simp [this]
 
 private theorem bruh {m i j : Nat} (h2 : j ≤ m) (h3 : i < j) : i + (m - j) = m - (j - i) := by omega
-  -- calc i + (m - j)
-  -- _ = (i + m) - j := by rw [Nat.add_sub_assoc]; assumption
-  -- _ = (m + i) - j := by rw [Nat.add_comm]
-  -- _ = m - (j - i) := by rw [←Nat.add_sub_add_right m i (j - i)]; simp [Nat.le_of_lt h3]
+
+private theorem witness_positive_card (α : Type u) [Fintype α] (x: α) : Fintype.card α > 0 :=
+  have : Nonempty α := Nonempty.intro x
+  Fintype.card_pos
 
 theorem no_an_bn_automaton :
   ¬ ∃ (M : Automaton),
@@ -308,10 +306,10 @@ theorem no_an_bn_automaton :
 
   have : ¬ is_an_bn it a b := by
     intro thing
-    have _ := exclusive_an_bn_a (m - (j - i)) m it a b hit thing
+    have _ := exclusive_an_bn_a (m - (j - i)) m it a b hit thing h_aneb
 
     have : m - (j - i) ≠ m := by
-      have : 0 < m := sorry
+      have : 0 < m := witness_positive_card K s
       have : 0 < ↑(j - i) :=  by
         have : i < j := by assumption
         have := Nat.sub_lt_sub_right (Nat.le_refl i) ‹i < j›
