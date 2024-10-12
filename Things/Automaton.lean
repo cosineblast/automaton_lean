@@ -1,6 +1,9 @@
 import Mathlib.Data.Fintype.Card
 
+import Mathlib.Data.Set.Defs
+
 abbrev replicate n (x : α) := List.replicate n x
+abbrev Lang (A : Type) := Set (List A)
 
 def ListN n α := { xs : List α // xs.length = n }
 
@@ -9,20 +12,18 @@ instance : GetElem (ListN n α) (Fin n) α (fun _ _ => True) where
     let ⟨xs, h⟩ := xs'
     fun _ => xs[i]
 
-class Automaton where
+class Automaton (A : Type) where
   K : Type
-  A : Type -- alphabet
   δ : K → A → K  -- transition funciton
   s : K -- initial state
-  f : K → Prop -- final states
+  f : Set K -- final states
 
 namespace Automaton
 
 
-private def m1 : Automaton :=
+private def m1 : Automaton (Fin 2) :=
   {
     K := Fin 3,
-    A := Fin 2,
     δ := fun s i =>
       match s, i with
       | 0, 0 => 0
@@ -37,38 +38,7 @@ private def m1 : Automaton :=
   }
 
 
--- this sucks
-def formally_accepts [Automaton] (w: ListN n A) : Prop :=
-  let n1 := n + 1
-  let promote := Fin.castLE (Nat.le_succ n)
-  ∃ r : ListN n1 K,
-  r[(0 : Fin n1)] = s ∧
-  (∀ i : Fin n, r[(Fin.succ i)] = δ (r[promote i]) (w[i])) ∧
-  f (r[Fin.last n])
-
-
-example :
-  let str : ListN 5 (Fin 2)  := ⟨[0, 1, 1, 0, 1], rfl⟩
-  m1.formally_accepts str
-  := by
-    let r : ListN 6 (Fin 3) := ⟨[0, 0, 1, 1, 2, 1], rfl⟩
-    exists r
-    constructor
-    · rfl
-
-    constructor
-    · intro i
-      match i with
-      | 0 => rfl
-      | 1 => rfl
-      | 2 => rfl
-      | 3 => rfl
-      | 4 => rfl
-
-    · rfl
-
-
-def δs [Automaton] (q : K) (str : List A) : K :=
+def δs [m : Automaton A] (q : m.K) (str : List A) : m.K :=
   match str with
   | [] => q
   | x :: t => δs (δ q x) t
@@ -77,15 +47,15 @@ infixl:64   " ↝ " => Automaton.δ   -- \r~
 infixl:63   " ↠ " => Automaton.δs  -- \rr-
 notation:80 lhs:80 " ^^ " rhs:80 => List.replicate rhs lhs    -- \r~
 
-theorem δs_nil [Automaton] (q : K) : δs q [] = q := rfl
+theorem δs_nil [m : Automaton A] (q : m.K) : δs q [] = q := rfl
 
-theorem δs_cons [Automaton] (q : K)
+theorem δs_cons [m : Automaton A] (q : m.K)
   {h : A}
   {t : List A}
   : q ↠ (h :: t) = (q ↝ h) ↠ t := rfl
 
 
-def accepts [Automaton] (w: List A) : Prop := f (s ↠ w)
+def accepts [Automaton A] (w: List A) : Prop := f (s ↠ w)
 
 example :
   let str : List (Fin 2)  := [0, 1, 1, 0, 1]
@@ -93,8 +63,8 @@ example :
   := by rfl
 
 
-theorem δs_append [Automaton] :
-  ∀ x y: List A, ∀ q: K,
+theorem δs_append [m : Automaton A] :
+  ∀ x y: List A, ∀ q: m.K,
   q ↠ (x ++ y) = (q ↠ x) ↠ y
   := by
   intro x y
@@ -111,6 +81,13 @@ theorem δs_append [Automaton] :
     rw [δs_cons]
     rw [δs_cons]
     exact ih (q ↝ f)
+
+-- d12 k c = (d1 k.1 c, d2 k.2 c) 
+-- d12* k w = (d1* k.1 w, d2* k.2 w)
+
+-- d12* k [1,2,3,4]
+-- d12* (d12 k 1) [2,3,4]
+-- (d1* (d12 k 1).1 [2,3,4], )
 
 def is_an_bn (l : List α) (a : α) (b : α) :=
   ∃ n : Nat, l = a ^^ n++ (b ^^ n)
@@ -162,7 +139,7 @@ private theorem ab_replication_is_injective :
 
   have : n1 = n2 := by
     apply Classical.byContradiction
-    intro 
+    intro
     have : n1 ≠ n2 := by assumption
 
     let k := n2 - n1
@@ -175,20 +152,20 @@ private theorem ab_replication_is_injective :
     let r1 := List.drop n1 x1
     let r2 := List.drop n1 x2
 
-    have := calc r1 
+    have := calc r1
       _ = List.drop n1 x1 := rfl
       _ = List.drop n1 x2 := by rw [‹x1 = x2›]
       _ = r2 := rfl
 
     have := calc x2
       _ = a^^n2 ++ b^^m2 := rfl
-      _ = a^^(n1 + (1 + k')) ++ b^^m2 := by 
+      _ = a^^(n1 + (1 + k')) ++ b^^m2 := by
         have : n2 = n1 + (1 + k') := by omega
         rw [this]
       _ = a^^n1 ++ a ^^(1 + k') ++ b^^m2 := by rw [List.append_replicate_replicate]
       _ = a^^n1 ++ (a ^^(1 + k') ++ b^^m2) := by rw [List.append_assoc]
-    
-    have h_r2_a := 
+
+    have h_r2_a :=
       calc r2
         _ = List.drop n1 x2 := rfl
         _ = List.drop n1 (a^^(n1) ++ (a ^^(1 + k') ++ b^^m2)) := by rw [this]
@@ -209,14 +186,14 @@ private theorem ab_replication_is_injective :
       _ = b ^^ (t + 1) := by rw [‹m1 = t + 1›]
       _ = b :: (b ^^ t) := by rw [List.replicate_succ]
 
-    have : a = b := 
+    have : a = b :=
       have p1 : r2 = a :: (a ^^ k' ++ b^^m2) := by assumption
       have p2 : r2 = b :: (b ^^ t) := by assumption
       have : a :: (a ^^ k' ++ b^^m2) = b :: (b ^^ t) := p1 ▸ p2
       by injection this
 
     contradiction
-  
+
   have : m1 = m2 := by omega
 
   rw [‹n1 = n2›, ‹m1 = m2›]
@@ -229,7 +206,7 @@ private theorem exclusive_an_bn_a (n1 n2 : Nat) :
   intro h_n1_n2
   intro l_an_bn
   intro h_a_ne_b
-  
+
   let ⟨n, h⟩ := l_an_bn
   rw [h_n1_n2] at h
   have := ab_replication_is_injective n1 n n2 n a b h_a_ne_b h
@@ -243,7 +220,7 @@ private theorem witness_positive_card (α : Type u) [Fintype α] (x: α) : Finty
   Fintype.card_pos
 
 theorem no_an_bn_automaton :
-  ¬ ∃ (M : Automaton),
+  ¬ ∃ (M : Automaton A),
   ∃ (_ : Fintype M.K),
   ∃ (a b : A),
   a ≠ b ∧
@@ -253,7 +230,7 @@ theorem no_an_bn_automaton :
   := by
   intro ⟨M, h_K_finite, a, b, h_aneb, h⟩
 
-  let m := Fintype.card K
+  let m := Fintype.card M.K
 
   let original := ((a ^^ m) ++ (b ^^ m))
   have h_accepts_original : f (s ↠  (a ^^ m) ↠ (b ^^ m)) := by
@@ -309,7 +286,7 @@ theorem no_an_bn_automaton :
     have _ := exclusive_an_bn_a (m - (j - i)) m it a b hit thing h_aneb
 
     have : m - (j - i) ≠ m := by
-      have : 0 < m := witness_positive_card K s
+      have : 0 < m := witness_positive_card M.K s
       have : 0 < ↑(j - i) :=  by
         have : i < j := by assumption
         have := Nat.sub_lt_sub_right (Nat.le_refl i) ‹i < j›
@@ -334,9 +311,107 @@ theorem no_an_bn_automaton :
 
 
 
+def language (m : Automaton A) : Lang A := 
+  setOf (fun w => m.accepts w)
+
+def recognizable {A : Type} (l : Lang A) : Prop := 
+  ∃ m : Automaton A, m.language = l
+
+private def union (m1 : Automaton A) (m2 : Automaton A) : Automaton A :=
+  {
+    K := m1.K × m2.K,
+    δ := fun ⟨x , y⟩ c => ⟨m1.δ x c, m2.δ y c⟩,
+    s := ⟨m1.s, m2.s⟩ ,
+    f := setOf (fun ⟨x, y⟩ => x ∈ m1.f ∨ y ∈ m2.f)
+  }
+
+private theorem union_automaton_rec_union 
+  (m1 : Automaton A) 
+  (m2 : Automaton A)
+  (w : List A)
+  : m1.accepts w ∨ m2.accepts w ↔ (m1.union m2).accepts w
+  := by
+    let mu := m1.union m2 
+
+    have t : ∀ w : List A, ∀ q1 q2, (δs (m := mu) ⟨q1, q2⟩  w) = ⟨(δs (m := m1) q1 w), (δs (m := m2) q2 w)⟩ := 
+      by
+      intro w q1 q2 
+
+      induction w generalizing q1 q2 with
+      | nil => rfl
+      | cons x xs hi => aesop
+
+    have : ⟨m1.s, m2.s⟩ = mu.s := rfl
+
+    have : ∀ w : List A, (δs (m := mu) mu.s w) = ⟨(δs (m := m1) m1.s w),(δs (m := m2) m2.s w)⟩ := by
+      intro w 
+      have tt := t w m1.s m2.s
+      have : ⟨m1.s, m2.s⟩ = mu.s := rfl
+      rw [this] at tt
+      rw [tt]
+
+    constructor 
+    · intro
+      show mu.accepts w
+
+      have : m1.accepts w ∨ m2.accepts w := by assumption
+
+      cases this
+      · apply Or.inl 
+        aesop
+
+      · apply Or.inr 
+        aesop
+
+    · intro 
+      show m1.accepts w ∨ m2.accepts w
+
+      have : mu.accepts w := by assumption
+      have : δs (m := mu) mu.s w ∈ mu.f  := this
+      have : (δs (m := mu) mu.s w).1 ∈ m1.f ∨ (δs (m := mu) mu.s w).2 ∈ m2.f := this
+
+      cases this 
+      · apply Or.inl
+        aesop
+
+      · apply Or.inr
+        aesop
+
+
+theorem rec_union_rec_rec
+  (l : Lang A) (r : Lang A) 
+  (h1 : recognizable l) (h2 : recognizable r)
+  : recognizable (l ∪ r) := by
+
+  show ∃ m : Automaton A, m.language = l ∪ r
+
+  let ⟨m1, hm1⟩ := h1 
+  let ⟨m2, hm2⟩ := h2
+
+  let mu := m1.union m2 
+
+
+  have : mu.language = l ∪ r := by
+    ext x 
+    have := union_automaton_rec_union m1 m2 x
+    constructor 
+    · intro h 
+      simp
+      rw [←hm1 , ←hm2]
+      exact this.mpr h
+
+    · intro h
+      simp at h 
+      rw [←hm1, ←hm2] at h
+      exact this.mp h
+
+  exact Exists.intro mu this
 
 
 end Automaton
+
+
+
 
 
 
