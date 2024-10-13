@@ -2,6 +2,7 @@ import Mathlib.Data.Fintype.Card
 
 import Mathlib.Data.Set.Defs
 
+notation:80 lhs:80 " ^^ " rhs:80 => List.replicate rhs lhs    -- \r~
 abbrev replicate n (x : α) := List.replicate n x
 abbrev Lang (A : Type) := Set (List A)
 
@@ -13,30 +14,11 @@ structure Automaton (A : Type) where
 
 namespace Automaton
 
-
-private def m1 : Automaton (Fin 2) :=
-  {
-    K := Fin 3,
-    δ := fun s i =>
-      match s, i with
-      | 0, 0 => 0
-      | 0, 1 => 1
-      | 1, 0 => 2
-      | 1, 1 => 1
-      | 2, 0 => 1
-      | 2, 1 => 1
-
-    s := 0
-    f := (· = 1)
-  }
-
-
 def δs (m : Automaton A) (q : m.K) (str : List A) : m.K :=
   match str with
   | [] => q
   | x :: t => m.δs (m.δ q x) t
 
-notation:80 lhs:80 " ^^ " rhs:80 => List.replicate rhs lhs    -- \r~
 
 theorem δs_nil (m : Automaton A) (q : m.K) : m.δs q [] = q := rfl
 
@@ -45,14 +27,7 @@ theorem δs_cons (m : Automaton A) (q : m.K)
   {t : List A}
   : m.δs q (h :: t) = m.δs (m.δ q h) t := rfl
 
-
-def accepts (m : Automaton A) (w: List A) : Prop := m.f (m.δs m.s w)
-
-example :
-  let str : List (Fin 2)  := [0, 1, 1, 0, 1]
-  m1.accepts str
-  := by rfl
-
+def accepts (m : Automaton A) (w: List A) : Prop := (m.δs m.s w) ∈ m.f
 
 @[simp]
 theorem δs_append (m : Automaton A) :
@@ -94,7 +69,7 @@ private theorem ab_replication_is_injective :
   intro n1 n2
 
   wlog h_n1_lt_n2 : n1 ≤ n2 generalizing n1 n2 with H
-  · have : n2 ≤ n1 := by omega -- TODO expand omega
+  · have : n2 ≤ n1 := by omega
     intro m1 m2
     intro a b
     intro h_a_ne_b
@@ -302,7 +277,7 @@ def language (m : Automaton A) : Lang A :=
 def recognizable {A : Type} (l : Lang A) : Prop :=
   ∃ m : Automaton A, m.language = l
 
-private def union (m1 : Automaton A) (m2 : Automaton A) : Automaton A :=
+def union (m1 : Automaton A) (m2 : Automaton A) : Automaton A :=
   {
     K := m1.K × m2.K,
     δ := fun ⟨x , y⟩ c => ⟨m1.δ x c, m2.δ y c⟩,
@@ -310,7 +285,7 @@ private def union (m1 : Automaton A) (m2 : Automaton A) : Automaton A :=
     f := setOf (fun ⟨x, y⟩ => x ∈ m1.f ∨ y ∈ m2.f)
   }
 
-private theorem union_automaton_rec_union
+theorem union_automaton_rec_union
   (m1 : Automaton A)
   (m2 : Automaton A)
   (w : List A)
@@ -388,7 +363,7 @@ theorem rec_union_rec_rec
 
   exact Exists.intro mu this
 
-private def intersect (m1 : Automaton A) (m2 : Automaton A) : Automaton A :=
+def intersect (m1 : Automaton A) (m2 : Automaton A) : Automaton A :=
   {
     K := m1.K × m2.K,
     δ := fun ⟨x , y⟩ c => ⟨m1.δ x c, m2.δ y c⟩,
@@ -396,7 +371,7 @@ private def intersect (m1 : Automaton A) (m2 : Automaton A) : Automaton A :=
     f := setOf (fun ⟨x, y⟩ => x ∈ m1.f ∧ y ∈ m2.f)
   }
 
-private theorem inter_automaton_rec_inter
+theorem inter_automaton_rec_inter
   (m1 : Automaton A)
   (m2 : Automaton A)
   (w : List A)
@@ -455,6 +430,70 @@ theorem rec_inter_rec
       exact mp h
 
   exact Exists.intro mu this
+
+
+def complement (m : Automaton A) : Automaton A :=
+  {
+    K := m.K,
+    δ := m.δ,
+    s := m.s,
+    f := setOf (fun x => x ∉ m.f)
+  }
+
+open Classical
+
+theorem complement_rec_complement (m : Automaton A) :
+  ∀ w : List A, m.complement.accepts w ↔ ¬ m.accepts w
+  := by
+  intro w
+
+  let mc := m.complement
+
+  have h_same_δs : mc.δs = m.δs := by
+    ext q xs 
+    induction xs generalizing q with 
+    | nil => rfl
+    | cons x xs' hi => aesop
+
+  have forward : m.accepts w → ¬m.complement.accepts w := by
+    intro
+    intro
+    have : ¬ (m.accepts w) := by aesop
+    contradiction
+
+  constructor 
+  · intro h
+    show (m.δs m.s w ∉ m.f)
+    aesop
+
+  · contrapose 
+    intro h 
+
+    have : m.accepts w := by 
+      have : ¬ (mc.δs mc.s w ∉  m.f) := h
+      aesop
+
+    exact not_not_intro this
+    
+
+
+theorem rec_neg_rec
+  (l : Lang A)
+  (h1 : recognizable l)
+  : recognizable (lᶜ) := by
+  
+  let ⟨m, _⟩ := h1
+  let mc := m.complement
+
+  have : mc.language = lᶜ := by 
+    ext x
+    have := complement_rec_complement m x 
+    aesop
+
+  apply Exists.intro mc this
+
+
+  
 
 
 
