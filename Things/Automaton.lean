@@ -5,13 +5,6 @@ import Mathlib.Data.Set.Defs
 abbrev replicate n (x : α) := List.replicate n x
 abbrev Lang (A : Type) := Set (List A)
 
-def ListN n α := { xs : List α // xs.length = n }
-
-instance : GetElem (ListN n α) (Fin n) α (fun _ _ => True) where
-  getElem := fun xs' i =>
-    let ⟨xs, h⟩ := xs'
-    fun _ => xs[i]
-
 class Automaton (A : Type) where
   K : Type
   δ : K → A → K  -- transition funciton
@@ -63,6 +56,7 @@ example :
   := by rfl
 
 
+@[simp]
 theorem δs_append [m : Automaton A] :
   ∀ x y: List A, ∀ q: m.K,
   q ↠ (x ++ y) = (q ↠ x) ↠ y
@@ -82,7 +76,7 @@ theorem δs_append [m : Automaton A] :
     rw [δs_cons]
     exact ih (q ↝ f)
 
--- d12 k c = (d1 k.1 c, d2 k.2 c) 
+-- d12 k c = (d1 k.1 c, d2 k.2 c)
 -- d12* k w = (d1* k.1 w, d2* k.2 w)
 
 -- d12* k [1,2,3,4]
@@ -311,10 +305,10 @@ theorem no_an_bn_automaton :
 
 
 
-def language (m : Automaton A) : Lang A := 
+def language (m : Automaton A) : Lang A :=
   setOf (fun w => m.accepts w)
 
-def recognizable {A : Type} (l : Lang A) : Prop := 
+def recognizable {A : Type} (l : Lang A) : Prop :=
   ∃ m : Automaton A, m.language = l
 
 private def union (m1 : Automaton A) (m2 : Automaton A) : Automaton A :=
@@ -325,52 +319,48 @@ private def union (m1 : Automaton A) (m2 : Automaton A) : Automaton A :=
     f := setOf (fun ⟨x, y⟩ => x ∈ m1.f ∨ y ∈ m2.f)
   }
 
-private theorem union_automaton_rec_union 
-  (m1 : Automaton A) 
+private theorem union_automaton_rec_union
+  (m1 : Automaton A)
   (m2 : Automaton A)
   (w : List A)
   : m1.accepts w ∨ m2.accepts w ↔ (m1.union m2).accepts w
   := by
-    let mu := m1.union m2 
+    let mu := m1.union m2
 
-    have t : ∀ w : List A, ∀ q1 q2, (δs (m := mu) ⟨q1, q2⟩  w) = ⟨(δs (m := m1) q1 w), (δs (m := m2) q2 w)⟩ := 
+    have t : ∀ w : List A, ∀ q1 q2, (δs (m := mu) ⟨q1, q2⟩  w) = ⟨(δs (m := m1) q1 w), (δs (m := m2) q2 w)⟩ :=
       by
-      intro w q1 q2 
+      intro w q1 q2
 
       induction w generalizing q1 q2 with
       | nil => rfl
-      | cons x xs hi => aesop
+      | cons x _ hi => apply hi
 
     have : ⟨m1.s, m2.s⟩ = mu.s := rfl
 
     have : ∀ w : List A, (δs (m := mu) mu.s w) = ⟨(δs (m := m1) m1.s w),(δs (m := m2) m2.s w)⟩ := by
-      intro w 
-      have tt := t w m1.s m2.s
-      have : ⟨m1.s, m2.s⟩ = mu.s := rfl
-      rw [this] at tt
-      rw [tt]
+      aesop
 
-    constructor 
+    constructor
     · intro
       show mu.accepts w
 
       have : m1.accepts w ∨ m2.accepts w := by assumption
 
       cases this
-      · apply Or.inl 
+      · apply Or.inl
         aesop
 
-      · apply Or.inr 
+      · apply Or.inr
         aesop
 
-    · intro 
+    · intro
       show m1.accepts w ∨ m2.accepts w
 
       have : mu.accepts w := by assumption
       have : δs (m := mu) mu.s w ∈ mu.f  := this
       have : (δs (m := mu) mu.s w).1 ∈ m1.f ∨ (δs (m := mu) mu.s w).2 ∈ m2.f := this
 
-      cases this 
+      cases this
       · apply Or.inl
         aesop
 
@@ -379,33 +369,102 @@ private theorem union_automaton_rec_union
 
 
 theorem rec_union_rec_rec
-  (l : Lang A) (r : Lang A) 
+  (l : Lang A) (r : Lang A)
   (h1 : recognizable l) (h2 : recognizable r)
   : recognizable (l ∪ r) := by
 
   show ∃ m : Automaton A, m.language = l ∪ r
 
-  let ⟨m1, hm1⟩ := h1 
+  let ⟨m1, hm1⟩ := h1
   let ⟨m2, hm2⟩ := h2
 
-  let mu := m1.union m2 
+  let mu := m1.union m2
 
 
   have : mu.language = l ∪ r := by
-    ext x 
+    ext x
     have := union_automaton_rec_union m1 m2 x
-    constructor 
-    · intro h 
+    constructor
+    · intro h
       simp
       rw [←hm1 , ←hm2]
       exact this.mpr h
 
     · intro h
-      simp at h 
+      simp at h
       rw [←hm1, ←hm2] at h
       exact this.mp h
 
   exact Exists.intro mu this
+
+private def intersect (m1 : Automaton A) (m2 : Automaton A) : Automaton A :=
+  {
+    K := m1.K × m2.K,
+    δ := fun ⟨x , y⟩ c => ⟨m1.δ x c, m2.δ y c⟩,
+    s := ⟨m1.s, m2.s⟩ ,
+    f := setOf (fun ⟨x, y⟩ => x ∈ m1.f ∧ y ∈ m2.f)
+  }
+
+private theorem inter_automaton_rec_inter
+  (m1 : Automaton A)
+  (m2 : Automaton A)
+  (w : List A)
+  : m1.accepts w ∧ m2.accepts w ↔ (m1.intersect m2).accepts w
+  := by
+    let mu := m1.intersect m2
+
+    have t : ∀ w : List A, ∀ q1 q2, (δs (m := mu) ⟨q1, q2⟩  w) = ⟨(δs (m := m1) q1 w), (δs (m := m2) q2 w)⟩ :=
+      by
+      intro w q1 q2
+      induction w generalizing q1 q2 with
+      | nil => rfl
+      | cons x _ hi => apply hi
+
+    have : ⟨m1.s, m2.s⟩ = mu.s := rfl
+
+    have t2 : ∀ w : List A, (δs (m := mu) mu.s w) = ⟨(δs (m := m1) m1.s w),(δs (m := m2) m2.s w)⟩ := by
+      intro
+      apply t
+
+    constructor
+    · intro
+      show (δs (m := mu) mu.s w).1 ∈ m1.f ∧ (δs (m := mu) mu.s w).2 ∈ m2.f
+      aesop
+
+    · intro h
+      have : (δs (m := mu) mu.s w).1 ∈ m1.f ∧ (δs (m := mu) mu.s w).2 ∈ m2.f := h
+      aesop
+
+
+theorem rec_inter_rec
+  (l : Lang A) (r : Lang A)
+  (h1 : recognizable l) (h2 : recognizable r)
+  : recognizable (l ∩ r) := by
+
+  show ∃ m : Automaton A, m.language = l ∩ r
+
+  let ⟨m1, hm1⟩ := h1
+  let ⟨m2, hm2⟩ := h2
+
+  let mu := m1.intersect m2
+
+
+  have : mu.language = l ∩ r := by
+    ext x
+    have ⟨mp, mpr⟩  := inter_automaton_rec_inter m1 m2 x
+    constructor
+    · intro h
+      simp
+      rw [←hm1 , ←hm2]
+      exact mpr h
+
+    · intro h
+      simp at h
+      rw [←hm1, ←hm2] at h
+      exact mp h
+
+  exact Exists.intro mu this
+
 
 
 end Automaton
