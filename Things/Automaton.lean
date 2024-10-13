@@ -5,7 +5,7 @@ import Mathlib.Data.Set.Defs
 abbrev replicate n (x : α) := List.replicate n x
 abbrev Lang (A : Type) := Set (List A)
 
-class Automaton (A : Type) where
+structure Automaton (A : Type) where
   K : Type
   δ : K → A → K  -- transition funciton
   s : K -- initial state
@@ -31,24 +31,22 @@ private def m1 : Automaton (Fin 2) :=
   }
 
 
-def δs [m : Automaton A] (q : m.K) (str : List A) : m.K :=
+def δs (m : Automaton A) (q : m.K) (str : List A) : m.K :=
   match str with
   | [] => q
-  | x :: t => δs (δ q x) t
+  | x :: t => m.δs (m.δ q x) t
 
-infixl:64   " ↝ " => Automaton.δ   -- \r~
-infixl:63   " ↠ " => Automaton.δs  -- \rr-
 notation:80 lhs:80 " ^^ " rhs:80 => List.replicate rhs lhs    -- \r~
 
-theorem δs_nil [m : Automaton A] (q : m.K) : δs q [] = q := rfl
+theorem δs_nil (m : Automaton A) (q : m.K) : m.δs q [] = q := rfl
 
-theorem δs_cons [m : Automaton A] (q : m.K)
+theorem δs_cons (m : Automaton A) (q : m.K)
   {h : A}
   {t : List A}
-  : q ↠ (h :: t) = (q ↝ h) ↠ t := rfl
+  : m.δs q (h :: t) = m.δs (m.δ q h) t := rfl
 
 
-def accepts [Automaton A] (w: List A) : Prop := f (s ↠ w)
+def accepts (m : Automaton A) (w: List A) : Prop := m.f (m.δs m.s w)
 
 example :
   let str : List (Fin 2)  := [0, 1, 1, 0, 1]
@@ -57,31 +55,24 @@ example :
 
 
 @[simp]
-theorem δs_append [m : Automaton A] :
+theorem δs_append (m : Automaton A) :
   ∀ x y: List A, ∀ q: m.K,
-  q ↠ (x ++ y) = (q ↠ x) ↠ y
+  m.δs q (x ++ y) = m.δs (m.δs q x) y
   := by
   intro x y
   induction x with
   | nil =>
     intro q
-    show q ↠ ([] ++ y) = (q ↠ []) ↠ y
+    show m.δs q ([] ++ y) = m.δs (m.δs q []) y
     rw [List.nil_append, δs_nil]
 
   | cons f t ih =>
     intro q
-    show q ↠ (f :: t ++ y) = (q ↠ (f :: t)) ↠ y
+    show m.δs q (f :: t ++ y) = m.δs (m.δs q (f :: t)) y
     rw [List.cons_append]
     rw [δs_cons]
     rw [δs_cons]
-    exact ih (q ↝ f)
-
--- d12 k c = (d1 k.1 c, d2 k.2 c)
--- d12* k w = (d1* k.1 w, d2* k.2 w)
-
--- d12* k [1,2,3,4]
--- d12* (d12 k 1) [2,3,4]
--- (d1* (d12 k 1).1 [2,3,4], )
+    exact ih (m.δ q f)
 
 def is_an_bn (l : List α) (a : α) (b : α) :=
   ∃ n : Nat, l = a ^^ n++ (b ^^ n)
@@ -227,12 +218,12 @@ theorem no_an_bn_automaton :
   let m := Fintype.card M.K
 
   let original := ((a ^^ m) ++ (b ^^ m))
-  have h_accepts_original : f (s ↠  (a ^^ m) ↠ (b ^^ m)) := by
+  have h_accepts_original : M.f (M.δs (M.δs M.s (a ^^ m)) (b ^^ m)) := by
     rw [←δs_append]
     exact (h original).mpr ⟨m, rfl⟩
 
-  let q  := fun (k : Fin (m+1)) => s ↠  (a ^^ k)
-  let hq : ∀ k, q k = s ↠  (a ^^ k) := fun _ => rfl
+  let q  := fun (k : Fin (m+1)) => M.δs M.s (a ^^ k)
+  let hq : ∀ k, q k = M.δs M.s (a ^^ k) := fun _ => rfl
 
   let ⟨i , j , hi_ne_j, h_qi_qj⟩ := Fintype.exists_ne_map_eq_of_card_lt q (by simp)
 
@@ -253,23 +244,23 @@ theorem no_an_bn_automaton :
     exact Nat.le_of_lt_succ (by simp)
 
   have :=
-    calc s ↠  a ^^ m ++ b ^^ m
-    _ = s ↠  a ^^ (j + (m-j)) ++ b ^^ m         := by rw [←this]
-    _ = s ↠  a ^^ j ++ a ^^ (m - j) ++ b ^^ m   := by rw [← List.append_replicate_replicate]
-    _ = s ↠  a ^^ j ++ (a ^^ (m - j) ++ b ^^ m) := by rw [List.append_assoc]
-    _ = s ↠  a ^^ j ↠ (a ^^ (m - j) ++ b ^^ m)  := by rw [δs_append]
-    _ = q j ↠ (a ^^ (m - j) ++ b ^^ m)          := by rw [←hq]
-    _ = q i ↠ (a ^^ (m - j) ++ b ^^ m)                 := by rw [←h_qi_qj]
-    _ = s ↠  a ^^ i ↠ (a ^^ (m - j) ++ b ^^ m)  := by rw [hq]
-    _ = s ↠  a ^^ i ++ (a ^^ (m - j) ++ b ^^ m)  := by rw [←δs_append]
-    _ = s ↠  a ^^ i ++ a ^^ (m - j) ++ b ^^ m  := by rw [←List.append_assoc]
-    _ = s ↠  a ^^ (i + (m - j)) ++ b ^^ m  := by rw [List.append_replicate_replicate]
-    _ = s ↠  a ^^ (m - (j - i)) ++ b ^^ m  := by rw [beep]
+    calc M.δs M.s (a ^^ m ++ b ^^ m)
+    _ = M.δs M.s (a ^^ (j + (m-j)) ++ b ^^ m)         := by rw [←this]
+    _ = M.δs M.s (a ^^ j ++ a ^^ (m - j) ++ b ^^ m)   := by rw [← List.append_replicate_replicate]
+    _ = M.δs M.s (a ^^ j ++ (a ^^ (m - j) ++ b ^^ m)) := by rw [List.append_assoc]
+    _ = M.δs (M.δs M.s (a ^^ j)) (a ^^ (m - j) ++ b ^^ m)  := by rw [δs_append]
+    _ = M.δs (q j) (a ^^ (m - j) ++ b ^^ m)          := by rw [←hq]
+    _ = M.δs (q i) (a ^^ (m - j) ++ b ^^ m)                 := by rw [←h_qi_qj]
+    _ = M.δs (M.δs M.s (a ^^ i)) (a ^^ (m - j) ++ b ^^ m)  := by rw [hq]
+    _ = M.δs M.s (a ^^ i ++ (a ^^ (m - j) ++ b ^^ m))  := by rw [←δs_append]
+    _ = M.δs M.s (a ^^ i ++ a ^^ (m - j) ++ b ^^ m)  := by rw [←List.append_assoc]
+    _ = M.δs M.s (a ^^ (i + (m - j)) ++ b ^^ m)  := by rw [List.append_replicate_replicate]
+    _ = M.δs M.s (a ^^ (m - (j - i)) ++ b ^^ m)  := by rw [beep]
 
   let it := (a ^^ (m - (j - i)) ++ b ^^ m)
   have hit : it = a ^^ (m - (j - i)) ++ b ^^ m := rfl
 
-  have : accepts it := by
+  have : M.accepts it := by
     rw [accepts]
     rw [← this]
     rw [δs_append]
@@ -280,7 +271,7 @@ theorem no_an_bn_automaton :
     have _ := exclusive_an_bn_a (m - (j - i)) m it a b hit thing h_aneb
 
     have : m - (j - i) ≠ m := by
-      have : 0 < m := witness_positive_card M.K s
+      have : 0 < m := witness_positive_card M.K M.s
       have : 0 < ↑(j - i) :=  by
         have : i < j := by assumption
         have := Nat.sub_lt_sub_right (Nat.le_refl i) ‹i < j›
@@ -299,7 +290,7 @@ theorem no_an_bn_automaton :
 
 
 
-  have : is_an_bn it a b := (h it).mp ‹accepts it›
+  have : is_an_bn it a b := (h it).mp ‹M.accepts it›
 
   contradiction
 
